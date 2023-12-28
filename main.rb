@@ -3,46 +3,55 @@ require 'tempfile'
 require 'fileutils'
 
 class Resizer
-  UPPER_SIZE = 10 * 1024 * 1024 # 10MB
+  UPPER_SIZE = 10 * 1000 * 1000 # 10MB in filesystem
   def initialize(original_file_name:)
     @original_file_name = original_file_name
     @output_file_name = "#{@original_file_name}.resized.jpg"
   end
 
   def resize
-    if should_update?(@original_file_name)
+    FileUtils.rm_f(@output_file_name)
+
+    unless limit_over?(@original_file_name)
       FileUtils.cp(@original_file_name, @output_file_name)
     else
+      lower_scale = 0.1
+      upper_scale = 1.0
+
       image_orig = Magick::Image.read(@original_file_name).first
-      scale = 0.5
-      5.times do
+      tempfile = Tempfile.create(['', '.jpg'])
+      image_orig.scale(lower_scale).write(tempfile.path)
+      raise "Failed to resize: #{@original_file_name}" if limit_over?(tempfile.path)
+
+      FileUtils.cp(tempfile.path, @output_file_name)
+
+      10.times do
+        scale = (lower_scale + upper_scale) / 2
+        puts scale
         tempfile = Tempfile.create(['', '.jpg'])
         image_orig.scale(scale).write(tempfile.path)
-        if should_update?(tempfile.path)
-          FileUtils.cp(tempfile.path, @output_file_name)
-          scale = (1.0 + scale) / 2
+
+        if limit_over?(tempfile.path)
+          upper_scale = scale
         else
-          scale = scale / 2
+          lower_scale = scale
+          FileUtils.cp(tempfile.path, @output_file_name)
         end
+
         FileUtils.rm(tempfile.path)
       end
     end
 
-    original_file_size_mb = Magick::Image.read(@original_file_name).first.filesize.to_f / (1024 * 1024)
-    output_file_size_mb = Magick::Image.read(@output_file_name).first.filesize.to_f / (1024 * 1024)
-    puts "#{@original_file_name} -> #{@output_file_name}: #{'%.1f' % original_file_size_mb}MB -> #{'%.1f' % output_file_size_mb}MB"
+    original_file_size_mb = Magick::Image.read(@original_file_name).first.filesize.to_f / (1000 * 1000)
+    output_file_size_mb = Magick::Image.read(@output_file_name).first.filesize.to_f / (1000 * 1000)
+    puts "result | #{@original_file_name} -> #{@output_file_name}: #{'%.1f' % original_file_size_mb}MB -> #{'%.1f' % output_file_size_mb}MB"
   end
 
   private
-  def should_update?(file)
-    new_filesize = Magick::Image.read(file).first.filesize
-    return false if new_filesize > UPPER_SIZE
-    return true unless File.exists?(@output_file_name)
-
-    output_filesize = Magick::Image.read(@output_file_name).first.filesize
-    return true if new_filesize > output_filesize
-
-    false
+  def limit_over?(file)
+    image = Magick::Image.read(file).first
+    filesize = image.filesize
+    filesize >= UPPER_SIZE
   end
 end
 
