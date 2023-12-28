@@ -25,7 +25,7 @@ class Resizer
 
       FileUtils.cp(tempfile.path, @output_file_name)
 
-      10.times do
+      6.times do
         scale = (lower_scale + upper_scale) / 2
         puts scale
         tempfile = Tempfile.create(['', '.jpg'])
